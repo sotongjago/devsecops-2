@@ -7,22 +7,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest bandit
+      - name: Install dependencies and package
+        run: |
+          python -m pip install --upgrade pip
+          # Install project in editable mode (so `import src...` works)
+          # If you don't have setup.cfg/pyproject.toml, the next line won't fail pytest if PYTHONPATH is set.
+          pip install -e . || true
+          # Install requirements + test tools
+          pip install -r requirements.txt || true
+          pip install pytest bandit
 
-    - name: Run Unit Tests
-      run: pytest
+      - name: Export PYTHONPATH so pytest can import src (fallback)
+        run: echo "PYTHONPATH=$(pwd)/src" >> $GITHUB_ENV
 
-    - name: Static Security Analysis (Bandit)
-      run: bandit -r src
+      - name: Run Unit Tests
+        run: pytest -q
+
+      - name: Static Security Analysis (Bandit)
+        run: bandit -r src
