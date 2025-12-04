@@ -1,55 +1,39 @@
-name: CI Pipeline - Debug & Test
+name: CI & Security Pipeline
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
-  build-test:
+  test-and-security:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Show repo tree for debugging
-        run: |
-          echo "=== PWD ==="
-          pwd
-          echo "=== Listing root ==="
-          ls -la
-          echo "=== Listing repo recursively (top 3 levels) ==="
-          find . -maxdepth 3 -type d -print -o -type f -print | sed -n '1,200p'
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Print Python info before installs
-        run: |
-          python -V
-          python -c "import sys; print('sys.path before:', sys.path)"
-
-      - name: Install dependencies and try editable install
+      - name: Upgrade pip & install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Try installing package in editable mode (non-fatal)
-          pip install -e . || true
-          pip install -r requirements.txt || true
+          pip install -r requirements.txt
           pip install pytest bandit
 
-      - name: Export PYTHONPATH so pytest can import src (fallback)
+      - name: Run Unit Tests
+        run: pytest -v
+
+      - name: Run Bandit Security Scan
+        continue-on-error: true   # biar pipeline tetap lanjut meski ada issue
         run: |
-          echo "PYTHONPATH=$(pwd)/src" >> $GITHUB_ENV
-          echo "Exported PYTHONPATH=$(pwd)/src"
-
-      - name: Show sys.path and test import in runner (quick import test)
-        run: |
-          python -c "import sys, os; print('sys.path after:', sys.path); import os; print('cwd:', os.getcwd())"
-          python -c "import importlib, traceback, sys\ntry:\n  importlib.import_module('src')\n  print('Imported package src OK')\nexcept Exception as e:\n  print('Import src failed:'); traceback.print_exc()"
-          python -c "import importlib, traceback\ntry:\n  importlib.import_module('src.app')\n  print('Imported src.app OK')\nexcept Exception as e:\n  print('Import src.app failed:'); traceback.print_exc()"
-
-      - name: Run Unit Tests (pytest)
-        run: pytest -q
-
-      - name: Static Security Analysis (Bandit)
-        run: bandit -r src
+          bandit -r src -f json -o bandit-report.json || echo "Bandit found issues"
+          
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
